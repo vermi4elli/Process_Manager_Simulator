@@ -17,7 +17,7 @@ using namespace std::experimental;
 
 #define MAX_TIME_QUANT 10
 #define N 10
-#define TASKS_AMOUNT 30
+#define TASKS_AMOUNT 15
 
 using coro_t = coroutine_handle<>;
 
@@ -26,27 +26,25 @@ class ProcessManager {
 
     unordered_map<int64_t, int> processToQueueNumber_;
     vector<list<awaiter>> queues_;
-    bool set_;
-    int counter = 0;
-    int lastRunnedProcess = 0;
+    bool empty = true;
 
     struct awaiter {
         ProcessManager& manager_;
         coro_t coro_ = nullptr;
         awaiter(ProcessManager& event) noexcept : manager_(event) {}
 
-        bool await_ready() const noexcept { return manager_.is_set(); }
+        bool await_ready() const noexcept { return false; }
 
         void await_suspend(coro_t coro) noexcept {
             coro_ = coro;
             manager_.push_awaiter(*this);
         }
 
-        void await_resume() noexcept { manager_.reset(); }
+        void await_resume() noexcept {}
     };
 
 public:
-    ProcessManager(bool update = false) : set_{ update } 
+    ProcessManager(bool update = false)
     {
         for (int i = 0; i < N; i++)
         {
@@ -59,12 +57,16 @@ public:
     ProcessManager(ProcessManager&&) = delete;
     ProcessManager& operator=(ProcessManager&&) = delete;
 
-    bool is_set() const noexcept { return set_; }
     void push_awaiter(awaiter a) {
         int64_t address = (int64_t)a.coro_.address();
         
-        ++processToQueueNumber_[address];
-        queues_.at(processToQueueNumber_[address]).push_back(a);
+        if (!a.coro_.done())
+        {
+            ++processToQueueNumber_[address];
+            queues_.at(processToQueueNumber_[address]).push_back(a);
+
+            empty = false;
+        }
 
         if (processToQueueNumber_[address] > 1)
         {
@@ -73,55 +75,69 @@ public:
         cout << "> " << (processToQueueNumber_[address] == 1 ? "ADDING" : "MOVING") << " PROCESS #" << address << " TO THE QUEUE #" << processToQueueNumber_[address] << "...\n" << endl;
     }
     void dump();
+    void remove_process(int64_t address)
+    {
+        processToQueueNumber_.erase(address);
+    }
 
     awaiter operator co_await() noexcept { return awaiter{ *this }; }
 
     void update() noexcept {
-        set_ = true;
-        auto it = queues_.begin();
 
-        while ((*it).empty())
+        for (int i = 0; i < queues_.size(); i++)
         {
-            it++;
-            if (it == queues_.end())
+            if (queues_[i].empty())
             {
-                cout << "THERE ARE NO PROCESSES!!!" << endl;
+                if (i == queues_.size() - 1)
+                {
+                    cout << "THERE ARE NO PROCESSES!!!" << endl;
+                    empty = true;
+                }
+                continue;
             }
-        }
 
-        int queue_number = it - queues_.begin();
-        if (it != queues_.end())
-        {
-            auto s = (*it).front();
+            auto s = queues_[i].front();
 
-            cout << "> " << (queue_number == 1 ? "STARTED" : "RESUMED") << " PROCESS #" << (int64_t)s.coro_.address() << endl;
+            cout << "> " << (i == 1 ? "STARTED" : "RESUMED") << " PROCESS #" << (int64_t)s.coro_.address() << endl;
+
+            if (i != queues_.size() - 1)
+            {
+                if (!s.coro_.done()) s.coro_.resume();
+            }
+            else
+            {
+                while (!s.coro_.done()) s.coro_.resume();
+            }
             
-            s.coro_.resume();
-            (*it).pop_front();
+            queues_[i].pop_front();
+
+            break;
         }
     }
-
-    void reset() noexcept { set_ = false; }
 };
 
 
 ProcessManager processManager;
 
 void ProcessManager::dump() {
-    cout << "\n===== MANAGER DUMP =====" << endl;
-
-    for (int i = 1; i < queues_.size(); i++)
+    if (!empty)
     {
-        cout << "QUEUE #" << i << ": " << queues_.at(i).size() << " processes" << endl;
-    }
+        cout << "\n===== MANAGER DUMP =====" << endl;
 
-    cout << "===== MANAGER DUMP END =====\n" << endl;
-    
-    processManager.update();
+        for (int i = 1; i < queues_.size(); i++)
+        {
+            cout << "QUEUE #" << i << ": " << queues_.at(i).size() << " processes" << endl;
+        }
+
+        cout << "===== MANAGER DUMP END =====\n" << endl;
+
+        processManager.update();
+    }
 }
 
 struct resumable_no_own {
     struct promise_type {
+        bool done = false;
         using coro_handle = coroutine_handle<promise_type>;
         auto get_return_object() { return coro_handle::from_promise(*this); }
         auto initial_suspend() { return suspend_never(); }
@@ -133,7 +149,9 @@ struct resumable_no_own {
         void unhandled_exception() { terminate(); }
         ~promise_type()
         {
-            cout << "> ENDED PROCESS\n" << endl;
+            int64_t temp_address = (int64_t)this->get_return_object().address();
+            cout << "> ENDED PROCESS #" << temp_address << "\n" << endl;
+            processManager.remove_process(temp_address);
         }
     };
 
@@ -155,13 +173,15 @@ resumable_no_own runProcess(int runForMSecs)
         if (i % MAX_TIME_QUANT == 0 && i != runForMSecs)
         {
             co_await processManager;
-            cout << "> LEFT TO RUN FOR " << runForMSecs - i  << " mSecs" << endl;
+            cout << "> LEFT TO RUN FOR " << runForMSecs - i  << " mSecs FROM INITIAL " << runForMSecs << endl;
         }
     }
 }
 
 vector<int> GenerateTasksWeights(int highest, int fault)
 {
+    srand(time(0));
+
     vector<int> temp;
     cout << "THE TASKS WEIGHTS: ";
     for (int i = 0; i < TASKS_AMOUNT; i++)
@@ -204,13 +224,16 @@ void test3()
 {
     vector<int> tasks_weights = GenerateTasksWeights(16, 9);
 
+    int counter = 0;
     int i = 0;
     while (true)
     {
-        ++i;
-        if (i < tasks_weights.size() && rand() % 2 == 1)
+        ++counter;
+        
+        if (i < tasks_weights.size() && counter % (rand() % 3 + 1) == 0)
         {
             runProcess(tasks_weights[i]);
+            ++i;
         }
 
         processManager.dump();
