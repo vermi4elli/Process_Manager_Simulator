@@ -1,15 +1,16 @@
 #include <experimental/coroutine>
-#include <iostream>
-#include <assert.h>
-#include <Windows.h>
 #include <concurrent_queue.h>
-#include <mutex>
 #include <thread>
+#include <mutex>
 #include <chrono>
-#include <typeinfo>
-#include <list>
+#include <iostream>
 #include <unordered_map>
 #include <vector>
+#include <list>
+#include <Windows.h>
+#include <assert.h>
+#include <typeinfo>
+#include <cstdlib>
 
 using namespace std;
 using namespace std::experimental;
@@ -22,10 +23,8 @@ using coro_t = coroutine_handle<>;
 class ProcessManager {
     struct awaiter;
 
-    unordered_map<int, int> processToQueueNumber;
+    unordered_map<int64_t, int> processToQueueNumber_;
     vector<list<awaiter>> queues_;
-    vector<list<int>> queues_numbers_;
-    list<awaiter> lst_;
     bool set_;
     int counter = 0;
     int lastRunnedProcess = 0;
@@ -60,27 +59,19 @@ public:
     ProcessManager& operator=(ProcessManager&&) = delete;
 
     bool is_set() const noexcept { return set_; }
-    void push_awaiter(awaiter a) { 
-        cout << "The pushed queue address: " << (int)a.coro_.address() << endl;
-        queues_.at(processToQueueNumber.at(lastRunnedProcess)).push_back(a); 
-    }
-    void change_process_queue(int process, int queue)
-    {
-        processToQueueNumber[process] = queue;
-    }
-    const int get_counter()
-    {
-        return ++counter;
-    }
-    void change_last_runned_process(int processNumber)
-    {
-        lastRunnedProcess = processNumber;
+    void push_awaiter(awaiter a) {
+        int64_t address = (int64_t)a.coro_.address();
+        
+        ++processToQueueNumber_[address];
+        queues_.at(processToQueueNumber_[address]).push_back(a);
+
+        if (processToQueueNumber_[address] > 1)
+        {
+            cout << "> MAX TIME QUANT LIMIT REACHED!" << endl;
+        }
+        cout << "> " << (processToQueueNumber_[address] == 1 ? "ADDING" : "MOVING") << " PROCESS #" << address << " TO THE QUEUE #" << processToQueueNumber_[address] << "...\n" << endl;
     }
     void dump();
-    void remove_queue_process(int queue)
-    {
-        queues_.at(processToQueueNumber.at(lastRunnedProcess)).pop_front();
-    }
 
     awaiter operator co_await() noexcept { return awaiter{ *this }; }
 
@@ -101,6 +92,9 @@ public:
         if (it != queues_.end())
         {
             auto s = (*it).front();
+
+            cout << "> " << (queue_number == 1 ? "STARTED" : "RESUMED") << " PROCESS #" << (int64_t)s.coro_.address() << endl;
+            
             s.coro_.resume();
             (*it).pop_front();
         }
@@ -136,6 +130,10 @@ struct resumable_no_own {
         auto final_suspend() noexcept { return suspend_never(); }
         void return_void() {}
         void unhandled_exception() { terminate(); }
+        ~promise_type()
+        {
+            cout << "> ENDED PROCESS\n" << endl;
+        }
     };
 
     using coro_handle = coroutine_handle<promise_type>;
@@ -146,30 +144,19 @@ struct resumable_no_own {
 
 resumable_no_own runProcess(int runForMSecs)
 {
-    int processNumber = processManager.get_counter();
-    processManager.change_process_queue(processNumber, 1);
-    processManager.change_last_runned_process(processNumber);
     co_await processManager;
+    cout << "> WANT TO RUN FOR " << runForMSecs << " mSecs" << endl;
 
-    cout << "> STARTED PROCESS #" << processNumber << ". WANT TO RUN FOR " << runForMSecs << " mSecs" << endl;
-
-    int lastQueueNum = 1;
     for (int i = 1; i <= runForMSecs; i++)
     {
         cout << "Running mSec: " << i << endl;
         this_thread::sleep_for(chrono::milliseconds(1));
         if (i % MAX_TIME_QUANT == 0 && i != runForMSecs)
         {
-            lastQueueNum++;
-            cout << "\n> MAX TIME QUANT LIMIT REACHED" << endl;
-            cout << "> MOVING THE PROCESS #" << processNumber << " TO THE QUEUE #" << lastQueueNum << "...\n" << endl;
-            processManager.change_process_queue(processNumber, lastQueueNum);
-            processManager.change_last_runned_process(processNumber);
             co_await processManager;
-            cout << "> RESUMED PROCESS #" << processNumber << ". LEFT TO RUN FOR " << runForMSecs - i  << " mSecs" << endl;
+            cout << "> LEFT TO RUN FOR " << runForMSecs - i  << " mSecs" << endl;
         }
     }
-    cout << "> ENDED PROCESS #" << processNumber << endl << endl;
 }
 
 void test1()
@@ -190,9 +177,10 @@ void test2()
     int i = 0;
     while (true)
     {
+        ++i;
         if (i < tasks_weights.size())
         {
-            runProcess(tasks_weights[i++]);
+            runProcess(tasks_weights[i]);
         }
 
         processManager.dump();
