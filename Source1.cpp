@@ -1,5 +1,4 @@
 #include <experimental/coroutine>
-#include <future>
 #include <iostream>
 #include <assert.h>
 #include <Windows.h>
@@ -60,7 +59,10 @@ public:
     ProcessManager& operator=(ProcessManager&&) = delete;
 
     bool is_set() const noexcept { return set_; }
-    void push_awaiter(awaiter a) { queues_.at(processToQueueNumber.at(lastRunnedProcess)).push_back(a); }
+    void push_awaiter(awaiter a) { 
+        cout << "The pushed queue address: " << (int)a.coro_.address() << endl;
+        queues_.at(processToQueueNumber.at(lastRunnedProcess)).push_back(a); 
+    }
     void change_process_queue(int process, int queue)
     {
         processToQueueNumber[process] = queue;
@@ -94,16 +96,45 @@ public:
             }
         }
 
-        list<awaiter> toresume;
-        // making the new list with splice (O(1)) to get rid of the mistake
-        // of continuosly adding tasks (resumed -> pushed_back to the list -> resumed -> ...)
-        toresume.splice(toresume.begin(), *it);
-        for (auto s : toresume)
-            s.coro_.resume();
+        auto s = (*it).front();
+        s.coro_.resume();
+        (*it).pop_front();
+
+        //list<awaiter> toresume;
+        //// making the new list with splice (O(1)) to get rid of the mistake
+        //// of continuosly adding tasks (resumed -> pushed_back to the list -> resumed -> ...)
+        //toresume.splice(toresume.begin(), *it);
+        //for (auto s : toresume)
+        //{
+        //    if (!(*queues_.begin()).empty())
+        //    {
+
+        //    }
+        //    else
+        //    {
+        //        s.coro_.resume();
+        //    }
+        //}
     }
 
     void reset() noexcept { set_ = false; }
 };
+
+
+ProcessManager processManager;
+
+void ProcessManager::dump() {
+    cout << "\n===== MANAGER DUMP =====" << endl;
+
+    for (int i = 1; i < queues_.size(); i++)
+    {
+        cout << "QUEUE #" << i << ": " << queues_.at(i).size() << " processes" << endl;
+    }
+
+    cout << "===== MANAGER DUMP END =====\n" << endl;
+    
+    processManager.set();
+}
 
 struct resumable_no_own {
     struct promise_type {
@@ -124,25 +155,13 @@ struct resumable_no_own {
     resumable_no_own(resumable_no_own&& rhs) {}
 };
 
-int g_value;
-ProcessManager g_evt;
-
-void ProcessManager::dump() {
-    cout << "\n===== MANAGER DUMP =====" << endl;
-
-    for (int i = 1; i < queues_.size(); i++)
-    {
-        cout << "QUEUE #" << i << ": " << queues_.at(i).size() << " processes" << endl;
-    }
-
-    cout << "===== MANAGER DUMP END =====\n" << endl;
-    
-    g_evt.set();
-}
-
 resumable_no_own runProcess(int runForMSecs)
 {
-    int processNumber = g_evt.get_counter();
+    int processNumber = processManager.get_counter();
+    processManager.change_process_queue(processNumber, 1);
+    processManager.change_last_runned_process(processNumber);
+    co_await processManager;
+
     cout << "> STARTED PROCESS #" << processNumber << ". WANT TO RUN FOR " << runForMSecs << " mSecs" << endl;
 
     int lastQueueNum = 1;
@@ -155,13 +174,12 @@ resumable_no_own runProcess(int runForMSecs)
             lastQueueNum++;
             cout << "\n> MAX TIME QUANT LIMIT REACHED" << endl;
             cout << "> MOVING THE PROCESS #" << processNumber << " TO THE QUEUE #" << lastQueueNum << "...\n" << endl;
-            g_evt.change_process_queue(processNumber, lastQueueNum);
-            g_evt.change_last_runned_process(processNumber);
-            co_await g_evt;
+            processManager.change_process_queue(processNumber, lastQueueNum);
+            processManager.change_last_runned_process(processNumber);
+            co_await processManager;
+            cout << "> RESUMED PROCESS #" << processNumber << ". YET TO RUN FOR " << runForMSecs - i  << " mSecs" << endl;
         }
     }
-
-    //g_evt.remove_queue_process(processNumber);
     cout << "> ENDED PROCESS #" << processNumber << endl << endl;
 }
 
@@ -169,14 +187,30 @@ void test1()
 {
     runProcess(10);
     runProcess(39);
-    runProcess(5);
-    runProcess(8);
-    g_evt.dump();
-    g_evt.dump();
-    g_evt.dump();
-    g_evt.dump();
+    runProcess(25);
+    runProcess(18);
+    processManager.dump();
+    processManager.dump();
+    processManager.dump();
+    processManager.dump();
+}
+void test2()
+{
+    vector<int> tasks_weights = {10, 39, 25, 18, 17};
+    
+    int i = 0;
+    while (true)
+    {
+        if (i < tasks_weights.size())
+        {
+            runProcess(tasks_weights[i++]);
+        }
+
+        processManager.dump();
+    }
 }
 
 int main() {
-    test1();
+    //test1();
+    test2();
 }
