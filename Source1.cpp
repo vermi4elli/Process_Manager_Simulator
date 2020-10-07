@@ -24,28 +24,29 @@ class ProcessManager {
 
     unordered_map<int, int> processToQueueNumber;
     vector<list<awaiter>> queues_;
+    vector<list<int>> queues_numbers_;
     list<awaiter> lst_;
     bool set_;
     int counter = 0;
     int lastRunnedProcess = 0;
 
     struct awaiter {
-        ProcessManager& event_;
+        ProcessManager& manager_;
         coro_t coro_ = nullptr;
-        awaiter(ProcessManager& event) noexcept : event_(event) {}
+        awaiter(ProcessManager& event) noexcept : manager_(event) {}
 
-        bool await_ready() const noexcept { return event_.is_set(); }
+        bool await_ready() const noexcept { return manager_.is_set(); }
 
         void await_suspend(coro_t coro) noexcept {
             coro_ = coro;
-            event_.push_awaiter(*this);
+            manager_.push_awaiter(*this);
         }
 
-        void await_resume() noexcept { event_.reset(); }
+        void await_resume() noexcept { manager_.reset(); }
     };
 
 public:
-    ProcessManager(bool set = false) : set_{ set } 
+    ProcessManager(bool update = false) : set_{ update } 
     {
         for (int i = 0; i < N; i++)
         {
@@ -83,7 +84,7 @@ public:
 
     awaiter operator co_await() noexcept { return awaiter{ *this }; }
 
-    void set() noexcept {
+    void update() noexcept {
         set_ = true;
         auto it = queues_.begin();
 
@@ -96,9 +97,13 @@ public:
             }
         }
 
-        auto s = (*it).front();
-        s.coro_.resume();
-        (*it).pop_front();
+        int queue_number = it - queues_.begin();
+        if (it != queues_.end())
+        {
+            auto s = (*it).front();
+            s.coro_.resume();
+            (*it).pop_front();
+        }
     }
 
     void reset() noexcept { set_ = false; }
@@ -117,7 +122,7 @@ void ProcessManager::dump() {
 
     cout << "===== MANAGER DUMP END =====\n" << endl;
     
-    processManager.set();
+    processManager.update();
 }
 
 struct resumable_no_own {
@@ -161,7 +166,7 @@ resumable_no_own runProcess(int runForMSecs)
             processManager.change_process_queue(processNumber, lastQueueNum);
             processManager.change_last_runned_process(processNumber);
             co_await processManager;
-            cout << "> RESUMED PROCESS #" << processNumber << ". YET TO RUN FOR " << runForMSecs - i  << " mSecs" << endl;
+            cout << "> RESUMED PROCESS #" << processNumber << ". LEFT TO RUN FOR " << runForMSecs - i  << " mSecs" << endl;
         }
     }
     cout << "> ENDED PROCESS #" << processNumber << endl << endl;
