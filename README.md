@@ -52,6 +52,6 @@ while (true)
 ##### Output: the start of the 1st process and its suspension
 ![the start of the 1st process and its suspension](images/2_2.png "the start of the 1st process and its suspension")
 > The second process is suspended in the same way.
-##### Output: the end of the 1st process
+##### Output: the end of the 2nd process
 ![the end of the 1st process](images/2_3.png "the end of the 1st process")
-> The second process is ended in the same way. The final queue state would be the same, as inn the first example: empty.
+> The first process is ended in the same way, but later (the 2nd process had a lesser weight and it was in the more important queue than the 1st process). The final queue state would be the same, as in the first example: empty.
