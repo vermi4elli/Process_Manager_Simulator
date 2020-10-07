@@ -24,7 +24,7 @@ of all the existing Processes in there.
 > In these examples we consider the `MAX_TIME_QUANT` to be 10.      
 > The `processManager` is a global variable.
 
-#### The creation of a new process that has to run for 10ms
+#### The creation of a new process with 'weight' of 10ms
 > Second call of the `dump` method is used to demonstrate the queue state after the process is ended.
 ##### Code
 ```  
@@ -35,3 +35,23 @@ processManager.dump(processManager);
 ```
 ##### Output
 ![The creation of a new process that has to run for 10ms](images/1.png "The creation of a new process that has to run for 10ms")
+
+#### The creation of several new processes with various weights
+> To make things a little bit more readable, I commented the print of "Running m mSec" to shorten the output.     
+##### Code
+```  
+runProcess(25);
+runProcess(18);
+while (true)
+{
+    processManager.dump(processManager);
+}
+```
+##### Output: the creation and demonstration of new processes in the queue
+![The creation of new processes](images/2_1.png "The creation of new processes")
+##### Output: the start of the 1st process and its suspension
+![the start of the 1st process and its suspension](images/2_2.png "the start of the 1st process and its suspension")
+> The second process is suspended in the same way.
+##### Output: the end of the 1st process
+![the end of the 1st process](images/2_3.png "the end of the 1st process")
+> The second process is ended in the same way. The final queue state would be the same, as inn the first example: empty.
