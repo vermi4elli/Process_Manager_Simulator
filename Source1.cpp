@@ -17,6 +17,7 @@ using namespace std::experimental;
 
 #define MAX_TIME_QUANT 10
 #define N 10
+#define TASKS_AMOUNT 30
 
 using coro_t = coroutine_handle<>;
 
@@ -159,6 +160,19 @@ resumable_no_own runProcess(int runForMSecs)
     }
 }
 
+vector<int> GenerateTasksWeights(int highest, int fault)
+{
+    vector<int> temp;
+    cout << "THE TASKS WEIGHTS: ";
+    for (int i = 0; i < TASKS_AMOUNT; i++)
+    {
+        temp.push_back(rand() % highest + fault);
+        cout << temp.back() << " ";
+    }
+    cout << "\n" << endl;
+    return temp;
+}
+
 void test1()
 {
     runProcess(10);
@@ -186,8 +200,25 @@ void test2()
         processManager.dump();
     }
 }
+void test3()
+{
+    vector<int> tasks_weights = GenerateTasksWeights(16, 9);
+
+    int i = 0;
+    while (true)
+    {
+        ++i;
+        if (i < tasks_weights.size() && rand() % 2 == 1)
+        {
+            runProcess(tasks_weights[i]);
+        }
+
+        processManager.dump();
+    }
+}
 
 int main() {
     //test1();
-    test2();
+    //test2();
+    test3();
 }
