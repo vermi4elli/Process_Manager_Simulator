@@ -25,6 +25,7 @@ of all the existing Processes in there.
 > The `processManager` is a global variable.
 
 #### The creation of a new process that has to run for 10ms
+> Second call of the `dump` method is used to demonstrate the queue state after the process is ended.
 ##### Code
 ```  
 runProcess(10);     
@@ -33,4 +34,4 @@ processManager.dump(processManager);
 processManager.dump(processManager);    
 ```
 ##### Output
-![The creation of heap](images/1.png "The creation of heap")
+![The creation of a new process that has to run for 10ms](images/1.png "The creation of a new process that has to run for 10ms")
