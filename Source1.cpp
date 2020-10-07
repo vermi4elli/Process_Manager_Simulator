@@ -99,22 +99,6 @@ public:
         auto s = (*it).front();
         s.coro_.resume();
         (*it).pop_front();
-
-        //list<awaiter> toresume;
-        //// making the new list with splice (O(1)) to get rid of the mistake
-        //// of continuosly adding tasks (resumed -> pushed_back to the list -> resumed -> ...)
-        //toresume.splice(toresume.begin(), *it);
-        //for (auto s : toresume)
-        //{
-        //    if (!(*queues_.begin()).empty())
-        //    {
-
-        //    }
-        //    else
-        //    {
-        //        s.coro_.resume();
-        //    }
-        //}
     }
 
     void reset() noexcept { set_ = false; }
