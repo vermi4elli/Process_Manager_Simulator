@@ -9,6 +9,7 @@
 #include <chrono>
 #include <typeinfo>
 #include <list>
+#include <unordered_map>
 #include <vector>
 
 using namespace std;
@@ -19,17 +20,20 @@ using namespace std::experimental;
 
 using coro_t = coroutine_handle<>;
 
-class evt_awaiter_t {
+class ProcessManager {
     struct awaiter;
 
-    vector<list<awaiter>> queues;
+    unordered_map<int, int> processToQueueNumber;
+    vector<list<awaiter>> queues_;
     list<awaiter> lst_;
     bool set_;
+    int counter = 0;
+    int lastRunnedProcess = 0;
 
     struct awaiter {
-        evt_awaiter_t& event_;
+        ProcessManager& event_;
         coro_t coro_ = nullptr;
-        awaiter(evt_awaiter_t& event) noexcept : event_(event) {}
+        awaiter(ProcessManager& event) noexcept : event_(event) {}
 
         bool await_ready() const noexcept { return event_.is_set(); }
 
@@ -42,24 +46,53 @@ class evt_awaiter_t {
     };
 
 public:
-    evt_awaiter_t(bool set = false) : set_{ set } {}
-    evt_awaiter_t(const evt_awaiter_t&) = delete;
-    evt_awaiter_t& operator=(const evt_awaiter_t&) = delete;
-    evt_awaiter_t(evt_awaiter_t&&) = delete;
-    evt_awaiter_t& operator=(evt_awaiter_t&&) = delete;
+    ProcessManager(bool set = false) : set_{ set } 
+    {
+        for (int i = 0; i < N; i++)
+        {
+            list<awaiter> list_temp;
+            queues_.push_back(list_temp);
+        }
+    }
+    ProcessManager(const ProcessManager&) = delete;
+    ProcessManager& operator=(const ProcessManager&) = delete;
+    ProcessManager(ProcessManager&&) = delete;
+    ProcessManager& operator=(ProcessManager&&) = delete;
 
     bool is_set() const noexcept { return set_; }
-    void push_awaiter(awaiter a) { lst_.push_back(a); }
+    void push_awaiter(awaiter a) { queues_.at(processToQueueNumber.at(lastRunnedProcess)).push_back(a); }
+    void change_process_queue(int process, int queue)
+    {
+        processToQueueNumber[process] = queue;
+    }
+    const int get_counter()
+    {
+        return ++counter;
+    }
+    void change_last_runned_process(int processNumber)
+    {
+        lastRunnedProcess = processNumber;
+    }
 
     awaiter operator co_await() noexcept { return awaiter{ *this }; }
 
     void set() noexcept {
         set_ = true;
+        auto it = queues_.begin();
 
+        while ((*it).empty())
+        {
+            it++;
+            if (it == queues_.end())
+            {
+                cout << "THERE ARE NO PROCESSES!!!" << endl;
+            }
+        }
+
+        list<awaiter> toresume;
         // making the new list with splice (O(1)) to get rid of the mistake
         // of continuosly adding tasks (resumed -> pushed_back to the list -> resumed -> ...)
-        list<awaiter> toresume;
-        toresume.splice(toresume.begin(), lst_);
+        toresume.splice(toresume.begin(), *it);
         for (auto s : toresume)
             s.coro_.resume();
     }
@@ -87,30 +120,34 @@ struct resumable_no_own {
 };
 
 int g_value;
-evt_awaiter_t g_evt;
+ProcessManager g_evt;
 
 void producer() {
-    cout << "Producer started" << endl;
+    cout << "\nProducer started" << endl;
     this_thread::sleep_for(chrono::seconds(1));
-    g_value = 42;
-    cout << "Value ready" << endl;
+    cout << "Producer ready\n" << endl;
+    
     g_evt.set();
 }
 
 resumable_no_own runProcess(int runForMSecs)
 {
+    int processNumber = g_evt.get_counter();
     cout << "STARTED PROCESS. WANT TO RUN FOR " << runForMSecs << " mSecs" << endl;
 
-    int lastIterNum = 1;
+    int lastQueueNum = 1;
     for (int i = 1; i <= runForMSecs; i++)
     {
         cout << "Running mSec: " << i << endl;
         this_thread::sleep_for(chrono::milliseconds(1));
         if (i % MAX_TIME_QUANT == 0)
         {
-            lastIterNum = i;
-            cout << "Max time quant limit reached" << endl;
+            lastQueueNum++;
+            cout << "\nMax time quant limit reached" << endl;
             cout << "Passing control to the calling function" << endl;
+            cout << "Moving the process to the #" << lastQueueNum << " queue...\n" << endl;
+            g_evt.change_process_queue(processNumber, lastQueueNum);
+            g_evt.change_last_runned_process(processNumber);
             co_await g_evt;
         }
     }
@@ -118,36 +155,7 @@ resumable_no_own runProcess(int runForMSecs)
     cout << "ENDED PROCESS" << endl;
 }
 
-resumable_no_own consumer1() {
-    cout << "Consumer1 started" << endl;
-    co_await g_evt;
-    cout << "Consumer1 resumed" << endl;
-}
-
-resumable_no_own consumer2() {
-    cout << "Consumer2 started" << endl;
-    co_await g_evt;
-    cout << "Consumer2 resumed" << endl;
-}
-
-resumable_no_own consumer3() {
-    cout << "Consumer3 started" << endl;
-    co_await g_evt;
-    cout << "Consumer3 resumed" << endl;
-    co_await g_evt;
-    cout << "Consumer3 resumed again" << endl;
-}
-
 void test1()
-{
-    consumer1();
-    consumer2();
-    consumer3();
-    producer();
-    consumer1();
-    producer();
-}
-void test2()
 {
     runProcess(10);
     runProcess(39);
@@ -160,6 +168,5 @@ void test2()
 }
 
 int main() {
-    //test1();
-    test2();
+    test1();
 }
