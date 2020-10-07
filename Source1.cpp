@@ -73,6 +73,11 @@ public:
     {
         lastRunnedProcess = processNumber;
     }
+    void dump();
+    void remove_queue_process(int queue)
+    {
+        queues_.at(processToQueueNumber.at(lastRunnedProcess)).pop_front();
+    }
 
     awaiter operator co_await() noexcept { return awaiter{ *this }; }
 
@@ -108,7 +113,7 @@ struct resumable_no_own {
 
         // this one is critical: no suspend on final suspend
         // effectively means "destroy your frame"
-        auto final_suspend() { return suspend_never(); }
+        auto final_suspend() noexcept { return suspend_never(); }
         void return_void() {}
         void unhandled_exception() { terminate(); }
     };
@@ -122,10 +127,15 @@ struct resumable_no_own {
 int g_value;
 ProcessManager g_evt;
 
-void producer() {
-    cout << "\nProducer started" << endl;
-    this_thread::sleep_for(chrono::seconds(1));
-    cout << "Producer ready\n" << endl;
+void ProcessManager::dump() {
+    cout << "\n===== MANAGER DUMP =====" << endl;
+
+    for (int i = 1; i < queues_.size(); i++)
+    {
+        cout << "QUEUE #" << i << ": " << queues_.at(i).size() << " processes" << endl;
+    }
+
+    cout << "===== MANAGER DUMP END =====\n" << endl;
     
     g_evt.set();
 }
@@ -133,26 +143,26 @@ void producer() {
 resumable_no_own runProcess(int runForMSecs)
 {
     int processNumber = g_evt.get_counter();
-    cout << "STARTED PROCESS. WANT TO RUN FOR " << runForMSecs << " mSecs" << endl;
+    cout << "> STARTED PROCESS #" << processNumber << ". WANT TO RUN FOR " << runForMSecs << " mSecs" << endl;
 
     int lastQueueNum = 1;
     for (int i = 1; i <= runForMSecs; i++)
     {
         cout << "Running mSec: " << i << endl;
         this_thread::sleep_for(chrono::milliseconds(1));
-        if (i % MAX_TIME_QUANT == 0)
+        if (i % MAX_TIME_QUANT == 0 && i != runForMSecs)
         {
             lastQueueNum++;
-            cout << "\nMax time quant limit reached" << endl;
-            cout << "Passing control to the calling function" << endl;
-            cout << "Moving the process to the #" << lastQueueNum << " queue...\n" << endl;
+            cout << "\n> MAX TIME QUANT LIMIT REACHED" << endl;
+            cout << "> MOVING THE PROCESS #" << processNumber << " TO THE QUEUE #" << lastQueueNum << "...\n" << endl;
             g_evt.change_process_queue(processNumber, lastQueueNum);
             g_evt.change_last_runned_process(processNumber);
             co_await g_evt;
         }
     }
 
-    cout << "ENDED PROCESS" << endl;
+    //g_evt.remove_queue_process(processNumber);
+    cout << "> ENDED PROCESS #" << processNumber << endl << endl;
 }
 
 void test1()
@@ -161,10 +171,10 @@ void test1()
     runProcess(39);
     runProcess(5);
     runProcess(8);
-    producer();
-    producer();
-    producer();
-    producer();
+    g_evt.dump();
+    g_evt.dump();
+    g_evt.dump();
+    g_evt.dump();
 }
 
 int main() {
