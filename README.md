@@ -21,20 +21,25 @@ Describe your use cases in `main()` function or implement it in separate functio
 
 > All queue state outputs are made with the class ProcessManager `dump` function, which, basically, goes through the queue and prints the states 
 of all the existing Processes in there.     
-> In these examples we consider the `MAX_TIME_QUANT` to be 10.      
+> In these examples we consider the `MAX_TIME_QUANT` to be `queue_number * 2 - 1`.      
 > The `processManager` is a global variable.
 
 #### The creation of a new process with 'weight' of 10ms
-> Second call of the `dump` method is used to demonstrate the queue state after the process is ended.
+> Many calls of the `dump` method are used to demonstrate the queue state after the process is ended.       
+> To stop the program execution, use Ctrl + C.
 ##### Code
 ```  
 runProcess(10);     
    
-processManager.dump(processManager);    
-processManager.dump(processManager);    
+while (true)
+{
+    processManager.dump(processManager);
+}
 ```
-##### Output
-![The creation of a new process that has to run for 10ms](images/1.png "The creation of a new process that has to run for 10ms")
+##### Output: the creation and execution of a new process that has to run for 10ms
+![The creation and execution of a new process that has to run for 10ms](images/1_1.png "The creation and execution of a new process that has to run for 10ms")
+##### Output: the final execution and end of the process that has to run for 10ms
+![The final execution and end of the process that has to run for 10ms](images/1_2.png "The final execution and end of the process that has to run for 10ms")
 
 #### The creation of several new processes with various weights
 > To make things a little bit more readable, I commented the print of "Running m mSec" to shorten the output.     
