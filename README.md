@@ -62,4 +62,4 @@ while (true)
 > The first process is ended in the same way, but later (the 2nd process had a lesser weight and it was in the more important queue than the 1st process). The final queue state would be the same, as in the first example: empty.
 ### The charts
 This graphic shows the dependency of the time of waiting of the processes to execute on the delay between new processes appear.
-![The first graphic](images/1st_graphic.png "The first graphic")
+![The first graphic](images/1st_graphic.jpg "The first graphic")
